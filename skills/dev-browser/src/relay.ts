@@ -18,7 +18,29 @@ import type { WSContext } from "hono/ws";
 export interface RelayOptions {
   port?: number;
   host?: string;
+  /** Cleanup interval for stale pending requests in ms (default: 60000) */
+  cleanupInterval?: number;
+  /** Max age for pending requests before cleanup in ms (default: 60000) */
+  pendingRequestMaxAge?: number;
 }
+
+/** Error types for better categorization */
+export class RelayError extends Error {
+  public code: RelayErrorCode;
+
+  constructor(message: string, code: RelayErrorCode, cause?: Error) {
+    super(message, { cause });
+    this.name = "RelayError";
+    this.code = code;
+  }
+}
+
+export type RelayErrorCode =
+  | "EXTENSION_NOT_CONNECTED"
+  | "EXTENSION_TIMEOUT"
+  | "TARGET_NOT_FOUND"
+  | "INVALID_REQUEST"
+  | "INTERNAL_ERROR";
 
 export interface RelayServer {
   wsEndpoint: string;
@@ -105,22 +127,56 @@ interface CDPEvent {
 export async function serveRelay(options: RelayOptions = {}): Promise<RelayServer> {
   const port = options.port ?? 9222;
   const host = options.host ?? "127.0.0.1";
+  const cleanupInterval = options.cleanupInterval ?? 60000;
+  const pendingRequestMaxAge = options.pendingRequestMaxAge ?? 60000;
 
   // State
   const connectedTargets = new Map<string, ConnectedTarget>();
   const namedPages = new Map<string, string>(); // name -> sessionId
   const playwrightClients = new Map<string, PlaywrightClient>();
   let extensionWs: WSContext | null = null;
+  let extensionLastPing: number = Date.now();
 
-  // Pending requests to extension
-  const extensionPendingRequests = new Map<
-    number,
-    {
-      resolve: (result: unknown) => void;
-      reject: (error: Error) => void;
-    }
-  >();
+  // Pending requests to extension with timestamps for cleanup
+  interface PendingRequest {
+    resolve: (result: unknown) => void;
+    reject: (error: Error) => void;
+    createdAt: number;
+    method: string;
+  }
+  const extensionPendingRequests = new Map<number, PendingRequest>();
   let extensionMessageId = 0;
+
+  // Event emitter for target events (used for race-condition-free waiting)
+  type TargetEventHandler = (target: ConnectedTarget) => void;
+  const targetAttachedHandlers = new Set<TargetEventHandler>();
+
+  function onTargetAttached(handler: TargetEventHandler): () => void {
+    targetAttachedHandlers.add(handler);
+    return () => targetAttachedHandlers.delete(handler);
+  }
+
+  function emitTargetAttached(target: ConnectedTarget): void {
+    for (const handler of targetAttachedHandlers) {
+      handler(target);
+    }
+  }
+
+  // Periodic cleanup of stale pending requests
+  const cleanupTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [id, request] of extensionPendingRequests) {
+      if (now - request.createdAt > pendingRequestMaxAge) {
+        extensionPendingRequests.delete(id);
+        request.reject(
+          new RelayError(
+            `Request ${request.method} expired after ${pendingRequestMaxAge}ms`,
+            "EXTENSION_TIMEOUT"
+          )
+        );
+      }
+    }
+  }, cleanupInterval);
 
   // ============================================================================
   // Helper Functions
@@ -191,7 +247,7 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
     timeout?: number;
   }): Promise<unknown> {
     if (!extensionWs) {
-      throw new Error("Extension not connected");
+      throw new RelayError("Extension not connected", "EXTENSION_NOT_CONNECTED");
     }
 
     const id = ++extensionMessageId;
@@ -202,7 +258,12 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         extensionPendingRequests.delete(id);
-        reject(new Error(`Extension request timeout after ${timeout}ms: ${method}`));
+        reject(
+          new RelayError(
+            `Extension request timeout after ${timeout}ms: ${method}`,
+            "EXTENSION_TIMEOUT"
+          )
+        );
       }, timeout);
 
       extensionPendingRequests.set(id, {
@@ -214,6 +275,43 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
           clearTimeout(timeoutId);
           reject(error);
         },
+        createdAt: Date.now(),
+        method,
+      });
+    });
+  }
+
+  /**
+   * Wait for a target with specific targetId to be attached.
+   * Returns the target or throws if timeout is reached.
+   */
+  function waitForTargetAttached(targetId: string, timeout = 5000): Promise<ConnectedTarget> {
+    return new Promise((resolve, reject) => {
+      // Check if already attached
+      for (const target of connectedTargets.values()) {
+        if (target.targetId === targetId) {
+          resolve(target);
+          return;
+        }
+      }
+
+      // Wait for attachment event
+      const timeoutId = setTimeout(() => {
+        unsubscribe();
+        reject(
+          new RelayError(
+            `Timeout waiting for target ${targetId} to attach`,
+            "EXTENSION_TIMEOUT"
+          )
+        );
+      }, timeout);
+
+      const unsubscribe = onTargetAttached((target) => {
+        if (target.targetId === targetId) {
+          clearTimeout(timeoutId);
+          unsubscribe();
+          resolve(target);
+        }
       });
     });
   }
@@ -265,7 +363,10 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
       case "Target.attachToTarget": {
         const targetId = params?.targetId as string;
         if (!targetId) {
-          throw new Error("targetId is required for Target.attachToTarget");
+          throw new RelayError(
+            "targetId is required for Target.attachToTarget",
+            "INVALID_REQUEST"
+          );
         }
 
         for (const target of connectedTargets.values()) {
@@ -274,7 +375,10 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
           }
         }
 
-        throw new Error(`Target ${targetId} not found in connected targets`);
+        throw new RelayError(
+          `Target ${targetId} not found in connected targets`,
+          "TARGET_NOT_FOUND"
+        );
       }
 
       case "Target.getTargetInfo": {
@@ -331,13 +435,37 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
   const app = new Hono();
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
-  // Health check / server info
+  // Server info
   app.get("/", (c) => {
     return c.json({
       wsEndpoint: `ws://${host}:${port}/cdp`,
       extensionConnected: extensionWs !== null,
       mode: "extension",
     });
+  });
+
+  // Health check endpoint for monitoring
+  app.get("/health", (c) => {
+    const now = Date.now();
+    const extensionHealthy = extensionWs !== null && now - extensionLastPing < 60000;
+
+    const status = {
+      status: extensionHealthy ? "healthy" : "degraded",
+      uptime: process.uptime(),
+      extension: {
+        connected: extensionWs !== null,
+        lastPing: extensionLastPing,
+        healthy: extensionHealthy,
+      },
+      stats: {
+        connectedTargets: connectedTargets.size,
+        namedPages: namedPages.size,
+        playwrightClients: playwrightClients.size,
+        pendingRequests: extensionPendingRequests.size,
+      },
+    };
+
+    return c.json(status, extensionHealthy ? 200 : 503);
   });
 
   // List named pages
@@ -391,34 +519,44 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
         params: { method: "Target.createTarget", params: { url: "about:blank" } },
       })) as { targetId: string };
 
-      // Wait for Target.attachedToTarget event to register the new target
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      // Wait for Target.attachedToTarget event using event-based waiting (no hardcoded delay)
+      const target = await waitForTargetAttached(result.targetId, 5000);
 
-      // Find and name the new target
-      for (const [sessionId, target] of connectedTargets) {
-        if (target.targetId === result.targetId) {
-          namedPages.set(name, sessionId);
-          // Activate the tab so it becomes the active tab
-          await sendToExtension({
-            method: "forwardCDPCommand",
-            params: {
-              method: "Target.activateTarget",
-              params: { targetId: target.targetId },
-            },
-          });
-          return c.json({
-            wsEndpoint: `ws://${host}:${port}/cdp`,
-            name,
-            targetId: target.targetId,
-            url: target.targetInfo.url,
-          });
-        }
-      }
+      // Name the new target
+      namedPages.set(name, target.sessionId);
 
-      throw new Error("Target created but not found in registry");
+      // Activate the tab so it becomes the active tab
+      await sendToExtension({
+        method: "forwardCDPCommand",
+        params: {
+          method: "Target.activateTarget",
+          params: { targetId: target.targetId },
+        },
+      });
+
+      return c.json({
+        wsEndpoint: `ws://${host}:${port}/cdp`,
+        name,
+        targetId: target.targetId,
+        url: target.targetInfo.url,
+      });
     } catch (err) {
       log("Error creating tab:", err);
-      return c.json({ error: (err as Error).message }, 500);
+
+      // Categorized error responses
+      if (err instanceof RelayError) {
+        const statusCode =
+          err.code === "EXTENSION_NOT_CONNECTED"
+            ? 503
+            : err.code === "EXTENSION_TIMEOUT"
+              ? 504
+              : err.code === "INVALID_REQUEST"
+                ? 400
+                : 500;
+        return c.json({ error: err.message, code: err.code }, statusCode);
+      }
+
+      return c.json({ error: (err as Error).message, code: "INTERNAL_ERROR" }, 500);
     }
   });
 
@@ -570,6 +708,9 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
         },
 
         async onMessage(event, ws) {
+          // Update last ping time for health check
+          extensionLastPing = Date.now();
+
           let message: ExtensionMessage;
 
           try {
@@ -624,6 +765,9 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
               connectedTargets.set(targetParams.sessionId, target);
 
               log(`Target attached: ${targetParams.targetInfo.url} (${targetParams.sessionId})`);
+
+              // Emit event for waitForTargetAttached listeners
+              emitTargetAttached(target);
 
               // Use deduplication helper - only sends to clients that don't know about this target
               sendAttachedToTarget(target);
@@ -720,11 +864,28 @@ export async function serveRelay(options: RelayOptions = {}): Promise<RelayServe
     wsEndpoint,
     port,
     async stop() {
+      // Clear cleanup timer
+      clearInterval(cleanupTimer);
+
+      // Clear event handlers
+      targetAttachedHandlers.clear();
+
+      // Close all Playwright clients
       for (const client of playwrightClients.values()) {
         client.ws.close(1000, "Server stopped");
       }
       playwrightClients.clear();
+
+      // Reject pending requests
+      for (const pending of extensionPendingRequests.values()) {
+        pending.reject(new RelayError("Server stopped", "INTERNAL_ERROR"));
+      }
+      extensionPendingRequests.clear();
+
+      // Close extension connection
       extensionWs?.close(1000, "Server stopped");
+
+      // Close HTTP server
       server.close();
     },
   };

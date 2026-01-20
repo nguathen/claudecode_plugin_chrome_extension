@@ -15,38 +15,17 @@ Browser automation that maintains page state across script executions. Write sma
 
 ## Setup
 
-Two modes available. Ask the user if unclear which to use.
+Connects to the user's existing Chrome browser via the Chrome extension. This gives you access to logged-in sessions, bookmarks, and extensions.
 
-### Standalone Mode (Default)
-
-Launches a new Chromium browser for fresh automation sessions.
+**Start the server:**
 
 ```bash
-./skills/dev-browser/server.sh &
+cd skills/dev-browser && npm i && npm run start &
 ```
 
-Add `--headless` flag if user requests it. **Wait for the `Ready` message before running scripts.**
+Wait for `Waiting for extension to connect...` followed by `Extension connected` in the console to know the browser is ready to be controlled.
 
-### Extension Mode
-
-Connects to user's existing Chrome browser. Use this when:
-
-- The user is already logged into sites and wants you to do things behind an authed experience that isn't local dev.
-- The user asks you to use the extension
-
-**Important**: The core flow is still the same. You create named pages inside of their browser.
-
-**Start the relay server:**
-
-```bash
-cd skills/dev-browser && npm i && npm run start-extension &
-```
-
-Wait for `Waiting for extension to connect...` followed by `Extension connected` in the console. To know that a client has connected and the browser is ready to be controlled.
-**Workflow:**
-
-1. Scripts call `client.page("name")` just like the normal mode to create new pages / connect to existing ones.
-2. Automation runs on the user's actual browser session
+**Important**: You create named pages inside of their browser using `client.page("name")`.
 
 If the extension hasn't connected yet, tell the user to launch and activate it. Download link: https://github.com/SawyerHood/dev-browser/releases
 

@@ -207,10 +207,9 @@ async function getPageLoadState(page: Page): Promise<PageLoadState> {
   return result;
 }
 
-/** Server mode information */
+/** Server information */
 export interface ServerInfo {
   wsEndpoint: string;
-  mode: "launch" | "extension";
   extensionConnected?: boolean;
 }
 
@@ -282,37 +281,6 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
     return connectingPromise;
   }
 
-  // Find page by CDP targetId - more reliable than JS globals
-  async function findPageByTargetId(b: Browser, targetId: string): Promise<Page | null> {
-    for (const context of b.contexts()) {
-      for (const page of context.pages()) {
-        let cdpSession;
-        try {
-          cdpSession = await context.newCDPSession(page);
-          const { targetInfo } = await cdpSession.send("Target.getTargetInfo");
-          if (targetInfo.targetId === targetId) {
-            return page;
-          }
-        } catch (err) {
-          // Only ignore "target closed" errors, log unexpected ones
-          const msg = err instanceof Error ? err.message : String(err);
-          if (!msg.includes("Target closed") && !msg.includes("Session closed")) {
-            console.warn(`Unexpected error checking page target: ${msg}`);
-          }
-        } finally {
-          if (cdpSession) {
-            try {
-              await cdpSession.detach();
-            } catch {
-              // Ignore detach errors - session may already be closed
-            }
-          }
-        }
-      }
-    }
-    return null;
-  }
-
   // Helper to get a page by name (used by multiple methods)
   async function getPage(name: string, options?: PageOptions): Promise<Page> {
     // Request the page from server (creates if doesn't exist)
@@ -327,51 +295,34 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
     }
 
     const pageInfo = (await res.json()) as GetPageResponse & { url?: string };
-    const { targetId } = pageInfo;
 
     // Connect to browser
     const b = await ensureConnected();
 
-    // Check if we're in extension mode
-    const infoRes = await fetch(serverUrl);
-    const info = (await infoRes.json()) as { mode?: string };
-    const isExtensionMode = info.mode === "extension";
+    // Find page by URL or use the only available page
+    const allPages = b.contexts().flatMap((ctx) => ctx.pages());
 
-    if (isExtensionMode) {
-      // In extension mode, DON'T use findPageByTargetId as it corrupts page state
-      // Instead, find page by URL or use the only available page
-      const allPages = b.contexts().flatMap((ctx) => ctx.pages());
-
-      if (allPages.length === 0) {
-        throw new Error(`No pages available in browser`);
-      }
-
-      if (allPages.length === 1) {
-        return allPages[0]!;
-      }
-
-      // Multiple pages - try to match by URL if available
-      if (pageInfo.url) {
-        const matchingPage = allPages.find((p) => p.url() === pageInfo.url);
-        if (matchingPage) {
-          return matchingPage;
-        }
-      }
-
-      // Fall back to first page
-      if (!allPages[0]) {
-        throw new Error(`No pages available in browser`);
-      }
-      return allPages[0];
+    if (allPages.length === 0) {
+      throw new Error(`No pages available in browser`);
     }
 
-    // In launch mode, use the original targetId-based lookup
-    const page = await findPageByTargetId(b, targetId);
-    if (!page) {
-      throw new Error(`Page "${name}" not found in browser contexts`);
+    if (allPages.length === 1) {
+      return allPages[0]!;
     }
 
-    return page;
+    // Multiple pages - try to match by URL if available
+    if (pageInfo.url) {
+      const matchingPage = allPages.find((p) => p.url() === pageInfo.url);
+      if (matchingPage) {
+        return matchingPage;
+      }
+    }
+
+    // Fall back to first page
+    if (!allPages[0]) {
+      throw new Error(`No pages available in browser`);
+    }
+    return allPages[0];
   }
 
   return {
@@ -461,12 +412,10 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
       }
       const info = (await res.json()) as {
         wsEndpoint: string;
-        mode?: string;
         extensionConnected?: boolean;
       };
       return {
         wsEndpoint: info.wsEndpoint,
-        mode: (info.mode as "launch" | "extension") ?? "launch",
         extensionConnected: info.extensionConnected,
       };
     },

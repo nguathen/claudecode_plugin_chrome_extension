@@ -1,7 +1,7 @@
 /**
- * Start the CDP relay server for Chrome extension mode
+ * Start the dev-browser server
  *
- * Usage: npm run start-extension
+ * Usage: npm run start
  */
 
 import { serveRelay } from "@/relay.js";

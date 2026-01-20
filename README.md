@@ -43,10 +43,10 @@ rm -rf /tmp/dev-browser-skill
 **Amp only:** Start the server manually before use:
 
 ```bash
-cd ~/.claude/skills/dev-browser && npm install && npm run start-server
+cd ~/.claude/skills/dev-browser && npm install && npm run start
 ```
 
-### Chrome Extension (Optional)
+### Chrome Extension
 
 The Chrome extension allows Dev Browser to control your existing Chrome browser instead of launching a separate Chromium instance. This gives you access to your logged-in sessions, bookmarks, and extensions.
 

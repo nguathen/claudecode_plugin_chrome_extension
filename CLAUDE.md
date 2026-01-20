@@ -11,9 +11,9 @@ Always use Node.js/npm instead of Bun.
 cd skills/dev-browser && npm install
 
 # Start the dev-browser server
-cd skills/dev-browser && npm run start-server
+cd skills/dev-browser && npm run start
 
-# Run dev mode with watch
+# Run dev mode with watch (relay server)
 cd skills/dev-browser && npm run dev
 
 # Run tests (uses vitest)
@@ -45,11 +45,11 @@ This is a browser automation tool designed for developers and AI agents. It solv
 
 All source code lives in `skills/dev-browser/`:
 
-- `src/index.ts` - Server: launches persistent Chromium context, exposes HTTP API for page management
+- `src/relay.ts` - Server: CDP relay for Chrome extension mode, exposes HTTP API for page management
 - `src/client.ts` - Client: connects to server, retrieves pages by name via CDP
 - `src/types.ts` - Shared TypeScript types for API requests/responses
 - `src/dom/` - DOM tree extraction utilities for LLM-friendly page inspection
-- `scripts/start-server.ts` - Entry point to start the server
+- `scripts/start.ts` - Entry point to start the server
 - `tmp/` - Directory for temporary automation scripts
 
 ### Path Aliases
@@ -60,21 +60,21 @@ The project uses `@/` as a path alias to `./src/`. This is configured in both `p
 // Import from src/client.ts
 import { connect } from "@/client.js";
 
-// Import from src/index.ts
-import { serve } from "@/index.js";
+// Import from src/relay.ts
+import { serveRelay } from "@/relay.js";
 ```
 
 ### How It Works
 
-1. **Server** (`serve()` in `src/index.ts`):
-   - Launches Chromium with `launchPersistentContext` (preserves cookies, localStorage)
+1. **Server** (`serveRelay()` in `src/relay.ts`):
+   - Acts as a CDP relay between the Chrome extension and Playwright clients
    - Exposes HTTP API on port 9222 for page management
-   - Exposes CDP WebSocket endpoint on port 9223
+   - Relays CDP WebSocket messages between extension and clients
    - Pages are registered by name and persist until explicitly closed
 
 2. **Client** (`connect()` in `src/client.ts`):
    - Connects to server's HTTP API
-   - Uses CDP `targetId` to reliably find pages across reconnections
+   - Finds pages by URL matching
    - Returns standard Playwright `Page` objects for automation
 
 3. **Key API Endpoints**:

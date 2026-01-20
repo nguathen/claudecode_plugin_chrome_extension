@@ -1,13 +1,5 @@
 // API request/response types - shared between client and server
 
-export interface ServeOptions {
-  port?: number;
-  headless?: boolean;
-  cdpPort?: number;
-  /** Directory to store persistent browser profiles (cookies, localStorage, etc.) */
-  profileDir?: string;
-}
-
 export interface ViewportSize {
   width: number;
   height: number;
