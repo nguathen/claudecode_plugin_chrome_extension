@@ -110,10 +110,30 @@ await page.waitForURL("**/success");
 ```
 
 ### Take Screenshots
+
+**Fast - JPEG Q80 (recommended):**
 ```typescript
+// 74% smaller than PNG, similar visual quality
+// Example: 222KB PNG → 57KB JPEG
+await page.screenshot({ path: "tmp/screenshot.jpeg", type: "jpeg", quality: 80 });
+```
+
+**Standard options:**
+```typescript
+// PNG - lossless, but 4x larger
 await page.screenshot({ path: "tmp/screenshot.png" });
+
+// High quality JPEG
+await page.screenshot({ path: "tmp/screenshot.jpeg", type: "jpeg", quality: 95 });
+
+// Full page screenshot (slower)
 await page.screenshot({ path: "tmp/full.png", fullPage: true });
 ```
+
+**Performance optimization:**
+- Use JPEG for most screenshots (74% smaller, same speed)
+- Avoid `fullPage: true` for content-heavy pages
+- Use `domcontentloaded` instead of `networkidle` (60% faster loading)
 
 ### Extract Data
 ```typescript

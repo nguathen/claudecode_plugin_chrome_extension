@@ -217,6 +217,29 @@ async function getPageLoadState(page: Page): Promise<PageLoadState> {
 }
 
 /**
+ * Fast screenshot using JPEG Q80 - 74% smaller than PNG, similar speed
+ * Recommended for most use cases where visual quality is acceptable
+ */
+export async function screenshotFast(page: Page, path: string): Promise<void> {
+  await page.screenshot({
+    path,
+    type: "jpeg",
+    quality: 80,
+  });
+}
+
+/**
+ * High quality screenshot using JPEG Q95 - best visual quality with JPEG
+ */
+export async function screenshotHQ(page: Page, path: string): Promise<void> {
+  await page.screenshot({
+    path,
+    type: "jpeg",
+    quality: 95,
+  });
+}
+
+/**
  * Options for creating or getting a page
  */
 export interface PageOptions {
