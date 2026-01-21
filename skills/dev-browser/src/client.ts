@@ -304,10 +304,12 @@ async function tryConnectExisting(info: BrowserInfo): Promise<Browser | null> {
 
 /**
  * Launch browser with CDP endpoint exposed
+ * Uses fixed port 9222 to enable reconnection
  */
 async function launchBrowserWithCDP(headless: boolean): Promise<{ browser: Browser; wsEndpoint: string }> {
-  // Find an available port
-  const port = 9222 + Math.floor(Math.random() * 1000);
+  // Use fixed port for CDP so we can reliably reconnect
+  // If port 9222 is in use, it will throw error and previous browser should be killed first
+  const port = 9222;
 
   const browser = await chromium.launch({
     headless,
@@ -321,7 +323,7 @@ async function launchBrowserWithCDP(headless: boolean): Promise<{ browser: Brows
 
   const wsEndpoint = `ws://127.0.0.1:${port}`;
 
-  // Save browser info for reconnection (use port as identifier since process() may not be available)
+  // Save browser info for reconnection
   saveBrowserInfo({ wsEndpoint, pid: port });
 
   console.log(`[dev-browser] Browser launched on port ${port}`);
