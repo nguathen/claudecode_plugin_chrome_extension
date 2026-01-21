@@ -7,11 +7,12 @@
   "plugins": [
     {
       "name": "dev-browser",
-      "source": "https://github.com/nguathen/claudecode_plugin_chrome_extension",
+      "source": "./",
       "description": "Browser automation skill with persistent page state for developers and AI agents. Maintains browser state across multiple script executions for efficient web automation and testing.",
       "strict": false,
       "keywords": ["browser", "playwright", "automation", "testing", "debugging", "web-scraping"],
-      "skills": ["./skills/dev-browser"]
+      "skills": ["./skills/dev-browser"],
+      "repository": "https://github.com/nguathen/claudecode_plugin_chrome_extension"
     }
   ],
   "metadata": {
