@@ -191,16 +191,139 @@ const element = await client.selectSnapshotRef("hackernews", "e2");
 await element.click();
 ```
 
+## Real-World Examples
+
+### YouTube - Search and Play a Song
+```bash
+cd skills/dev-browser && node --import tsx/esm <<'EOF'
+import { connect, screenshot } from "@/client.js";
+
+const client = await connect();
+const page = await client.page("youtube");
+
+// Navigate to YouTube
+await page.goto("https://www.youtube.com", { waitUntil: "load" });
+
+// Search for a song
+await page.fill('input[name="search_query"]', "lofi hip hop");
+await page.press('input[name="search_query"]', "Enter");
+await page.waitForLoadState("networkidle");
+
+// Click on first video result
+await page.waitForSelector("ytd-video-renderer a#thumbnail", { timeout: 10000 });
+await page.click("ytd-video-renderer a#thumbnail");
+await page.waitForLoadState("load");
+
+// Wait for video to start playing
+await page.waitForTimeout(3000);
+
+const title = await page.title();
+console.log(`🎵 Now playing: ${title}`);
+await screenshot(page, "tmp/youtube-playing.jpeg");
+
+await client.disconnect();
+EOF
+```
+
+### Google Search
+```bash
+cd skills/dev-browser && node --import tsx/esm <<'EOF'
+import { connect, screenshot } from "@/client.js";
+
+const client = await connect();
+const page = await client.page("google");
+
+await page.goto("https://www.google.com", { waitUntil: "load" });
+await page.fill('textarea[name="q"]', "weather today");
+await page.press('textarea[name="q"]', "Enter");
+await page.waitForLoadState("networkidle");
+
+await screenshot(page, "tmp/google-results.jpeg");
+console.log("Search complete!");
+
+await client.disconnect();
+EOF
+```
+
+### Login to a Website
+```bash
+cd skills/dev-browser && node --import tsx/esm <<'EOF'
+import { connect, screenshot } from "@/client.js";
+
+const client = await connect();
+const page = await client.page("login");
+
+await page.goto("https://example.com/login", { waitUntil: "load" });
+
+// Fill login form
+await page.fill('input[name="email"]', "user@example.com");
+await page.fill('input[name="password"]', "password123");
+await page.click('button[type="submit"]');
+
+// Wait for redirect after login
+await page.waitForURL("**/dashboard", { timeout: 10000 });
+
+console.log("Logged in successfully!");
+await screenshot(page, "tmp/dashboard.jpeg");
+
+await client.disconnect();
+EOF
+```
+
+### Click a Button by Text
+```bash
+cd skills/dev-browser && node --import tsx/esm <<'EOF'
+import { connect } from "@/client.js";
+
+const client = await connect();
+const page = await client.page("example");
+
+await page.goto("https://example.com", { waitUntil: "load" });
+
+// Click button by text content
+await page.click('button:has-text("Submit")');
+// Or use getByRole
+await page.getByRole("button", { name: "Submit" }).click();
+
+await client.disconnect();
+EOF
+```
+
+### Extract Data from Page
+```bash
+cd skills/dev-browser && node --import tsx/esm <<'EOF'
+import { connect } from "@/client.js";
+
+const client = await connect();
+const page = await client.page("scrape");
+
+await page.goto("https://news.ycombinator.com", { waitUntil: "load" });
+
+// Extract all headlines
+const headlines = await page.evaluate(() => {
+  return Array.from(document.querySelectorAll(".titleline a")).map(el => ({
+    title: el.textContent,
+    url: el.href
+  }));
+});
+
+console.log("Top Headlines:");
+headlines.slice(0, 5).forEach((h, i) => console.log(`${i+1}. ${h.title}`));
+
+await client.disconnect();
+EOF
+```
+
 ## Error Recovery
 
 Page state persists after failures. Debug with:
 
 ```bash
-cd skills/dev-browser && npx tsx <<'EOF'
+cd skills/dev-browser && node --import tsx/esm <<'EOF'
 import { connect } from "@/client.js";
 
 const client = await connect();
-const page = await client.page("hackernews");
+const page = await client.page("debug");
 
 await page.screenshot({ path: "tmp/debug.png" });
 console.log({
