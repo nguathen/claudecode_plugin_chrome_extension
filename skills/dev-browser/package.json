@@ -6,15 +6,10 @@
     "@/*": "./src/*"
   },
   "scripts": {
-    "start": "npx tsx scripts/start.ts",
-    "dev": "npx tsx --watch src/relay.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.7",
-    "@hono/node-ws": "^1.2.0",
-    "hono": "^4.11.1",
     "playwright": "^1.49.0"
   },
   "devDependencies": {

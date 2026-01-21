@@ -1,76 +1,6 @@
-import { describe, test, expect, beforeAll, afterAll, vi } from "vitest";
-import { connect, waitForPageLoad } from "../client";
-import type { DevBrowserClient, ServerInfo, WaitForPageLoadResult } from "../client";
-import { serveRelay } from "../relay";
-import type { RelayServer } from "../relay";
-
-describe("Client - connect()", () => {
-  let server: RelayServer;
-  const TEST_PORT = 19225;
-
-  beforeAll(async () => {
-    server = await serveRelay({ port: TEST_PORT, host: "127.0.0.1" });
-  });
-
-  afterAll(async () => {
-    await server.stop();
-  });
-
-  test("connects to server and returns client interface", async () => {
-    const client = await connect(`http://127.0.0.1:${TEST_PORT}`);
-
-    expect(client).toHaveProperty("page");
-    expect(client).toHaveProperty("list");
-    expect(client).toHaveProperty("close");
-    expect(client).toHaveProperty("disconnect");
-    expect(client).toHaveProperty("getAISnapshot");
-    expect(client).toHaveProperty("selectSnapshotRef");
-    expect(client).toHaveProperty("getServerInfo");
-
-    await client.disconnect();
-  });
-
-  test("getServerInfo returns correct info", async () => {
-    const client = await connect(`http://127.0.0.1:${TEST_PORT}`);
-
-    const info = await client.getServerInfo();
-
-    expect(info).toHaveProperty("wsEndpoint");
-    expect(info.wsEndpoint).toBe(`ws://127.0.0.1:${TEST_PORT}/cdp`);
-    expect(info).toHaveProperty("extensionConnected", false);
-
-    await client.disconnect();
-  });
-
-  test("list returns empty array when no pages", async () => {
-    const client = await connect(`http://127.0.0.1:${TEST_PORT}`);
-
-    const pages = await client.list();
-    expect(pages).toEqual([]);
-
-    await client.disconnect();
-  });
-
-  test("throws error when server is not available during operation", async () => {
-    const client = await connect("http://127.0.0.1:19999");
-    // connect() itself doesn't throw - it returns a client
-    // But operations that require server connection will fail
-    await expect(client.getServerInfo()).rejects.toThrow();
-  });
-
-  test("multiple clients can connect", async () => {
-    const client1 = await connect(`http://127.0.0.1:${TEST_PORT}`);
-    const client2 = await connect(`http://127.0.0.1:${TEST_PORT}`);
-
-    const info1 = await client1.getServerInfo();
-    const info2 = await client2.getServerInfo();
-
-    expect(info1.wsEndpoint).toBe(info2.wsEndpoint);
-
-    await client1.disconnect();
-    await client2.disconnect();
-  });
-});
+import { describe, test, expect, vi } from "vitest";
+import { waitForPageLoad } from "../client";
+import type { WaitForPageLoadResult } from "../client";
 
 describe("Client - waitForPageLoad()", () => {
   test("returns result structure", async () => {
@@ -208,16 +138,6 @@ describe("Client - waitForPageLoad()", () => {
 });
 
 describe("Client Types", () => {
-  test("ServerInfo interface has correct shape", () => {
-    const info: ServerInfo = {
-      wsEndpoint: "ws://localhost:9222/cdp",
-      extensionConnected: true,
-    };
-
-    expect(info.wsEndpoint).toBeDefined();
-    expect(info.extensionConnected).toBeDefined();
-  });
-
   test("WaitForPageLoadResult interface has correct shape", () => {
     const result: WaitForPageLoadResult = {
       success: true,

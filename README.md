@@ -17,54 +17,12 @@ A browser automation plugin for [Claude Code](https://docs.anthropic.com/en/docs
 
 ## Installation
 
-### Claude Code
-
 ```
 /plugin marketplace add sawyerhood/dev-browser
 /plugin install dev-browser@sawyerhood/dev-browser
 ```
 
 Restart Claude Code after installation.
-
-### Amp / Codex
-
-Copy the skill to your skills directory:
-
-```bash
-# For Amp: ~/.claude/skills | For Codex: ~/.codex/skills
-SKILLS_DIR=~/.claude/skills  # or ~/.codex/skills
-
-mkdir -p $SKILLS_DIR
-git clone https://github.com/sawyerhood/dev-browser /tmp/dev-browser-skill
-cp -r /tmp/dev-browser-skill/skills/dev-browser $SKILLS_DIR/dev-browser
-rm -rf /tmp/dev-browser-skill
-```
-
-**Amp only:** Start the server manually before use:
-
-```bash
-cd ~/.claude/skills/dev-browser && npm install && npm run start
-```
-
-### Chrome Extension
-
-The Chrome extension allows Dev Browser to control your existing Chrome browser instead of launching a separate Chromium instance. This gives you access to your logged-in sessions, bookmarks, and extensions.
-
-**Installation:**
-
-1. Download `extension.zip` from the [latest release](https://github.com/sawyerhood/dev-browser/releases/latest)
-2. Unzip the file to a permanent location (e.g., `~/.dev-browser-extension`)
-3. Open Chrome and go to `chrome://extensions`
-4. Enable "Developer mode" (toggle in top right)
-5. Click "Load unpacked" and select the unzipped extension folder
-
-**Using the extension:**
-
-1. Click the Dev Browser extension icon in Chrome's toolbar
-2. Toggle it to "Active" - this enables browser control
-3. Ask Claude to connect to your browser (e.g., "connect to my Chrome" or "use the extension")
-
-When active, Claude can control your existing Chrome tabs with all your logged-in sessions, cookies, and extensions intact.
 
 ## Permissions
 
@@ -95,7 +53,6 @@ Just ask Claude to interact with your browser:
 | **Dev Browser**         | 3m 53s  | $0.88 | 29    | 100%    |
 | Playwright MCP          | 4m 31s  | $1.45 | 51    | 100%    |
 | Playwright Skill        | 8m 07s  | $1.45 | 38    | 67%     |
-| Claude Chrome Extension | 12m 54s | $2.81 | 80    | 100%    |
 
 _See [dev-browser-eval](https://github.com/SawyerHood/dev-browser-eval) for methodology._
 

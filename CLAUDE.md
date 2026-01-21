@@ -10,12 +10,6 @@ Always use Node.js/npm instead of Bun.
 # Install dependencies (from skills/dev-browser/ directory)
 cd skills/dev-browser && npm install
 
-# Start the dev-browser server
-cd skills/dev-browser && npm run start
-
-# Run dev mode with watch (relay server)
-cd skills/dev-browser && npm run dev
-
 # Run tests (uses vitest)
 cd skills/dev-browser && npm test
 
@@ -45,11 +39,9 @@ This is a browser automation tool designed for developers and AI agents. It solv
 
 All source code lives in `skills/dev-browser/`:
 
-- `src/relay.ts` - Server: CDP relay for Chrome extension mode, exposes HTTP API for page management
-- `src/client.ts` - Client: connects to server, retrieves pages by name via CDP
-- `src/types.ts` - Shared TypeScript types for API requests/responses
-- `src/dom/` - DOM tree extraction utilities for LLM-friendly page inspection
-- `scripts/start.ts` - Entry point to start the server
+- `src/client.ts` - Client: launches browser automatically, manages named pages
+- `src/types.ts` - Shared TypeScript types
+- `src/snapshot/` - ARIA snapshot utilities for LLM-friendly page inspection
 - `tmp/` - Directory for temporary automation scripts
 
 ### Path Aliases
@@ -59,40 +51,26 @@ The project uses `@/` as a path alias to `./src/`. This is configured in both `p
 ```typescript
 // Import from src/client.ts
 import { connect } from "@/client.js";
-
-// Import from src/relay.ts
-import { serveRelay } from "@/relay.js";
 ```
 
 ### How It Works
 
-1. **Server** (`serveRelay()` in `src/relay.ts`):
-   - Acts as a CDP relay between the Chrome extension and Playwright clients
-   - Exposes HTTP API on port 9222 for page management
-   - Relays CDP WebSocket messages between extension and clients
-   - Pages are registered by name and persist until explicitly closed
-
-2. **Client** (`connect()` in `src/client.ts`):
-   - Connects to server's HTTP API
-   - Finds pages by URL matching
+1. **Client** (`connect()` in `src/client.ts`):
+   - Automatically launches browser if not already running
+   - Saves browser connection info to `tmp/.browser-info.json` for reconnection
+   - Manages named pages that persist across script executions
    - Returns standard Playwright `Page` objects for automation
-
-3. **Key API Endpoints**:
-   - `GET /` - Returns CDP WebSocket endpoint
-   - `GET /pages` - Lists all named pages
-   - `POST /pages` - Gets or creates a page by name (body: `{ name: string }`)
-   - `DELETE /pages/:name` - Closes a page
 
 ### Usage Pattern
 
 ```typescript
 import { connect } from "@/client.js";
 
-const client = await connect("http://localhost:9222");
+const client = await connect(); // Launches browser automatically
 const page = await client.page("my-page"); // Gets existing or creates new
 await page.goto("https://example.com");
 // Page persists for future scripts
-await client.disconnect(); // Disconnects CDP but page stays alive on server
+await client.disconnect(); // Disconnects but browser keeps running
 ```
 
 ## Node.js Guidelines

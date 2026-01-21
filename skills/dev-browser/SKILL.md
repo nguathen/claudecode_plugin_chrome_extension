@@ -15,19 +15,15 @@ Browser automation that maintains page state across script executions. Write sma
 
 ## Setup
 
-Connects to the user's existing Chrome browser via the Chrome extension. This gives you access to logged-in sessions, bookmarks, and extensions.
-
-**Start the server:**
+The browser launches automatically when you run a script - no server setup required.
 
 ```bash
-cd skills/dev-browser && npm i && npm run start &
+cd skills/dev-browser && npm install
 ```
 
-Wait for `Waiting for extension to connect...` followed by `Extension connected` in the console to know the browser is ready to be controlled.
+**Important**: You create named pages using `client.page("name")`. Pages persist between script executions.
 
-**Important**: You create named pages inside of their browser using `client.page("name")`.
-
-If the extension hasn't connected yet, tell the user to launch and activate it. Download link: https://github.com/SawyerHood/dev-browser/releases
+Set `HEADLESS=true` environment variable to run browser in headless mode.
 
 ## Writing Scripts
 
@@ -58,7 +54,7 @@ EOF
 1. **Small scripts**: Each script does ONE thing (navigate, click, fill, check)
 2. **Evaluate state**: Log/return state at the end to decide next steps
 3. **Descriptive page names**: Use `"checkout"`, `"login"`, not `"main"`
-4. **Disconnect to exit**: `await client.disconnect()` - pages persist on server
+4. **Disconnect to exit**: `await client.disconnect()` - pages persist for next script
 5. **Plain JS in evaluate**: `page.evaluate()` runs in browser - no TypeScript syntax
 
 ## Workflow Loop
@@ -76,12 +72,12 @@ Follow this pattern for complex tasks:
 Code passed to `page.evaluate()` runs in the browser, which doesn't understand TypeScript:
 
 ```typescript
-// ✅ Correct: plain JavaScript
+// Correct: plain JavaScript
 const text = await page.evaluate(() => {
   return document.body.innerText;
 });
 
-// ❌ Wrong: TypeScript syntax will fail at runtime
+// Wrong: TypeScript syntax will fail at runtime
 const text = await page.evaluate(() => {
   const el: HTMLElement = document.body; // Type annotation breaks in browser!
   return el.innerText;
@@ -103,7 +99,7 @@ const pageWithSize = await client.page("name", { viewport: { width: 1920, height
 
 const pages = await client.list(); // List all page names
 await client.close("name"); // Close a page
-await client.disconnect(); // Disconnect (pages persist)
+await client.disconnect(); // Disconnect (browser keeps running for next script)
 
 // ARIA Snapshot methods
 const snapshot = await client.getAISnapshot("name"); // Get accessibility tree

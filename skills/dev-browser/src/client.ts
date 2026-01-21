@@ -1,12 +1,21 @@
-import { chromium, type Browser, type Page, type ElementHandle } from "playwright";
-import type {
-  GetPageRequest,
-  GetPageResponse,
-  ListPagesResponse,
-  ServerInfoResponse,
-  ViewportSize,
-} from "./types";
+import { chromium, type Browser, type Page, type ElementHandle, type BrowserContext } from "playwright";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { ViewportSize } from "./types";
 import { getSnapshotScript } from "./snapshot/browser-script";
+
+// File to store browser connection info
+const BROWSER_INFO_FILE = path.join(process.cwd(), "tmp", ".browser-info.json");
+
+interface BrowserInfo {
+  wsEndpoint: string;
+  pid: number;
+}
+
+interface NamedPageInfo {
+  name: string;
+  url: string;
+}
 
 /**
  * Options for waiting for page load
@@ -207,12 +216,6 @@ async function getPageLoadState(page: Page): Promise<PageLoadState> {
   return result;
 }
 
-/** Server information */
-export interface ServerInfo {
-  wsEndpoint: string;
-  extensionConnected?: boolean;
-}
-
 /**
  * Options for creating or getting a page
  */
@@ -237,123 +240,189 @@ export interface DevBrowserClient {
    * Refs persist across Playwright connections.
    */
   selectSnapshotRef: (name: string, ref: string) => Promise<ElementHandle | null>;
-  /**
-   * Get server information including mode and extension connection status.
-   */
-  getServerInfo: () => Promise<ServerInfo>;
 }
 
-export async function connect(serverUrl = "http://localhost:9222"): Promise<DevBrowserClient> {
-  let browser: Browser | null = null;
-  let wsEndpoint: string | null = null;
-  let connectingPromise: Promise<Browser> | null = null;
+/**
+ * Ensure tmp directory exists
+ */
+function ensureTmpDir(): void {
+  const tmpDir = path.dirname(BROWSER_INFO_FILE);
+  if (!fs.existsSync(tmpDir)) {
+    fs.mkdirSync(tmpDir, { recursive: true });
+  }
+}
 
-  async function ensureConnected(): Promise<Browser> {
-    // Return existing connection if still active
-    if (browser && browser.isConnected()) {
-      return browser;
+/**
+ * Save browser info to file
+ */
+function saveBrowserInfo(info: BrowserInfo): void {
+  ensureTmpDir();
+  fs.writeFileSync(BROWSER_INFO_FILE, JSON.stringify(info, null, 2));
+}
+
+/**
+ * Load browser info from file
+ */
+function loadBrowserInfo(): BrowserInfo | null {
+  try {
+    if (fs.existsSync(BROWSER_INFO_FILE)) {
+      const data = fs.readFileSync(BROWSER_INFO_FILE, "utf-8");
+      return JSON.parse(data) as BrowserInfo;
     }
+  } catch {
+    // File doesn't exist or is invalid
+  }
+  return null;
+}
 
-    // If already connecting, wait for that connection (prevents race condition)
-    if (connectingPromise) {
-      return connectingPromise;
+/**
+ * Try to connect to an existing browser
+ */
+async function tryConnectExisting(info: BrowserInfo): Promise<Browser | null> {
+  try {
+    const browser = await chromium.connectOverCDP(info.wsEndpoint, {
+      timeout: 5000,
+    });
+    return browser;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Launch browser with CDP endpoint exposed
+ */
+async function launchBrowserWithCDP(headless: boolean): Promise<{ browser: Browser; wsEndpoint: string }> {
+  // Find an available port
+  const port = 9222 + Math.floor(Math.random() * 1000);
+
+  const browser = await chromium.launch({
+    headless,
+    args: [
+      `--remote-debugging-port=${port}`,
+      "--disable-blink-features=AutomationControlled",
+      "--no-first-run",
+      "--no-default-browser-check",
+    ],
+  });
+
+  const wsEndpoint = `ws://127.0.0.1:${port}`;
+
+  // Save browser info for reconnection (use port as identifier since process() may not be available)
+  saveBrowserInfo({ wsEndpoint, pid: port });
+
+  console.log(`[dev-browser] Browser launched on port ${port}`);
+
+  return { browser, wsEndpoint };
+}
+
+/**
+ * Connect to dev-browser. Automatically launches browser if not running.
+ */
+export async function connect(): Promise<DevBrowserClient> {
+  const headless = process.env.HEADLESS === "true";
+  let browser: Browser;
+  let context: BrowserContext;
+
+  // Named pages tracking (name -> page URL for matching)
+  const namedPages = new Map<string, NamedPageInfo>();
+
+  // Try to connect to existing browser
+  const existingInfo = loadBrowserInfo();
+  if (existingInfo) {
+    const existingBrowser = await tryConnectExisting(existingInfo);
+    if (existingBrowser) {
+      console.log("[dev-browser] Connected to existing browser");
+      browser = existingBrowser;
+      context = browser.contexts()[0] || await browser.newContext();
+    } else {
+      // Browser no longer running, launch new one
+      console.log("[dev-browser] Previous browser not available, launching new one...");
+      const result = await launchBrowserWithCDP(headless);
+      browser = result.browser;
+      context = browser.contexts()[0] || await browser.newContext();
     }
-
-    // Start new connection with mutex
-    connectingPromise = (async () => {
-      try {
-        // Fetch wsEndpoint from server
-        const res = await fetch(serverUrl);
-        if (!res.ok) {
-          throw new Error(`Server returned ${res.status}: ${await res.text()}`);
-        }
-        const info = (await res.json()) as ServerInfoResponse;
-        wsEndpoint = info.wsEndpoint;
-
-        // Connect to the browser via CDP
-        browser = await chromium.connectOverCDP(wsEndpoint);
-        return browser;
-      } finally {
-        connectingPromise = null;
-      }
-    })();
-
-    return connectingPromise;
+  } else {
+    // No existing browser, launch new one
+    console.log("[dev-browser] Launching browser...");
+    const result = await launchBrowserWithCDP(headless);
+    browser = result.browser;
+    context = browser.contexts()[0] || await browser.newContext();
   }
 
-  // Helper to get a page by name (used by multiple methods)
-  async function getPage(name: string, options?: PageOptions): Promise<Page> {
-    // Request the page from server (creates if doesn't exist)
-    const res = await fetch(`${serverUrl}/pages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, viewport: options?.viewport } satisfies GetPageRequest),
-    });
+  // Helper to find page by name
+  async function findPageByName(name: string): Promise<Page | null> {
+    const pageInfo = namedPages.get(name);
+    if (!pageInfo) return null;
 
-    if (!res.ok) {
-      throw new Error(`Failed to get page: ${await res.text()}`);
-    }
-
-    const pageInfo = (await res.json()) as GetPageResponse & { url?: string };
-
-    // Connect to browser
-    const b = await ensureConnected();
-
-    // Find page by URL or use the only available page
-    const allPages = b.contexts().flatMap((ctx) => ctx.pages());
-
-    if (allPages.length === 0) {
-      throw new Error(`No pages available in browser`);
-    }
-
-    if (allPages.length === 1) {
-      return allPages[0]!;
-    }
-
-    // Multiple pages - try to match by URL if available
-    if (pageInfo.url) {
-      const matchingPage = allPages.find((p) => p.url() === pageInfo.url);
-      if (matchingPage) {
-        return matchingPage;
+    // Find page by URL match
+    const pages = context.pages();
+    for (const page of pages) {
+      if (page.url() === pageInfo.url) {
+        return page;
       }
     }
 
-    // Fall back to first page
-    if (!allPages[0]) {
-      throw new Error(`No pages available in browser`);
+    // URL might have changed, try to find by checking page still exists
+    return null;
+  }
+
+  // Get or create a page by name
+  async function getPage(name: string, options?: PageOptions): Promise<Page> {
+    // Check if we already have this named page
+    let page = await findPageByName(name);
+
+    if (!page) {
+      // Check all existing pages - maybe it's a new page we haven't named yet
+      const pages = context.pages();
+      if (pages.length > 0 && namedPages.size === 0) {
+        // First connection, use existing page if available
+        page = pages[0]!;
+      } else {
+        // Create new page
+        page = await context.newPage();
+      }
+
+      // Set viewport if specified
+      if (options?.viewport) {
+        await page.setViewportSize(options.viewport);
+      }
     }
-    return allPages[0];
+
+    // Track page URL changes
+    page.on("framenavigated", (frame) => {
+      if (frame === page!.mainFrame()) {
+        namedPages.set(name, { name, url: page!.url() });
+      }
+    });
+
+    // Register the named page
+    namedPages.set(name, { name, url: page.url() });
+
+    return page;
   }
 
   return {
     page: getPage,
 
     async list(): Promise<string[]> {
-      const res = await fetch(`${serverUrl}/pages`);
-      const data = (await res.json()) as ListPagesResponse;
-      return data.pages;
+      return Array.from(namedPages.keys());
     },
 
     async close(name: string): Promise<void> {
-      const res = await fetch(`${serverUrl}/pages/${encodeURIComponent(name)}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        throw new Error(`Failed to close page: ${await res.text()}`);
+      const page = await findPageByName(name);
+      if (page) {
+        await page.close();
       }
+      namedPages.delete(name);
     },
 
     async disconnect(): Promise<void> {
-      // Just disconnect the CDP connection - pages persist on server
-      if (browser) {
-        await browser.close();
-        browser = null;
-      }
+      // Just disconnect - browser keeps running for next script
+      await browser.close();
     },
 
     async getAISnapshot(name: string): Promise<string> {
-      // Get the page
       const page = await getPage(name);
 
       // Inject the snapshot script and call getAISnapshot
@@ -374,7 +443,6 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
     },
 
     async selectSnapshotRef(name: string, ref: string): Promise<ElementHandle | null> {
-      // Get the page
       const page = await getPage(name);
 
       // Find the element using the stored refs
@@ -403,21 +471,6 @@ export async function connect(serverUrl = "http://localhost:9222"): Promise<DevB
       }
 
       return element;
-    },
-
-    async getServerInfo(): Promise<ServerInfo> {
-      const res = await fetch(serverUrl);
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}: ${await res.text()}`);
-      }
-      const info = (await res.json()) as {
-        wsEndpoint: string;
-        extensionConnected?: boolean;
-      };
-      return {
-        wsEndpoint: info.wsEndpoint,
-        extensionConnected: info.extensionConnected,
-      };
     },
   };
 }
