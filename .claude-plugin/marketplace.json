@@ -1,21 +1,22 @@
 {
   "name": "dev-browser-marketplace",
   "owner": {
-    "name": "Sawyer Hood",
-    "email": "sawyerjhood@gmail.com"
+    "name": "nguathen",
+    "github": "https://github.com/nguathen"
   },
   "plugins": [
     {
       "name": "dev-browser",
-      "source": "./",
-      "description": "Browser automation skill with persistent page state for developers and AI agents",
+      "source": "https://github.com/nguathen/claudecode_plugin_chrome_extension",
+      "description": "Browser automation skill with persistent page state for developers and AI agents. Maintains browser state across multiple script executions for efficient web automation and testing.",
       "strict": false,
-      "keywords": ["browser", "playwright", "automation", "testing", "debugging"],
+      "keywords": ["browser", "playwright", "automation", "testing", "debugging", "web-scraping"],
       "skills": ["./skills/dev-browser"]
     }
   ],
   "metadata": {
-    "description": "Marketplace for the dev-browser skill",
-    "version": "1.0.1"
+    "description": "Marketplace for the dev-browser skill - Browser automation with persistent state",
+    "version": "1.0.2",
+    "repository": "https://github.com/nguathen/claudecode_plugin_chrome_extension"
   }
 }

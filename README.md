@@ -18,8 +18,15 @@ A browser automation plugin for [Claude Code](https://docs.anthropic.com/en/docs
 ## Installation
 
 ```
-/plugin marketplace add sawyerhood/dev-browser
-/plugin install dev-browser@sawyerhood/dev-browser
+/plugin install dev-browser@nguathen/claudecode_plugin_chrome_extension
+```
+
+Or clone and install locally:
+
+```bash
+git clone https://github.com/nguathen/claudecode_plugin_chrome_extension.git
+cd claudecode_plugin_chrome_extension/skills/dev-browser
+npm install
 ```
 
 Restart Claude Code after installation.
@@ -54,7 +61,7 @@ Just ask Claude to interact with your browser:
 | Playwright MCP          | 4m 31s  | $1.45 | 51    | 100%    |
 | Playwright Skill        | 8m 07s  | $1.45 | 38    | 67%     |
 
-_See [dev-browser-eval](https://github.com/SawyerHood/dev-browser-eval) for methodology._
+_Benchmarks from [dev-browser-eval](https://github.com/SawyerHood/dev-browser-eval). For the latest performance data, see [this repository](https://github.com/nguathen/claudecode_plugin_chrome_extension)._
 
 ### How It's Different
 
@@ -68,6 +75,10 @@ _See [dev-browser-eval](https://github.com/SawyerHood/dev-browser-eval) for meth
 
 MIT
 
-## Author
+## Original Creator
 
 [Sawyer Hood](https://github.com/sawyerhood)
+
+## Current Maintainer
+
+[nguathen](https://github.com/nguathen)
