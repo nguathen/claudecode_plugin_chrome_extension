@@ -292,14 +292,37 @@ function loadBrowserInfo(): BrowserInfo | null {
  * Try to connect to an existing browser
  */
 async function tryConnectExisting(info: BrowserInfo): Promise<Browser | null> {
+  // First try the stored endpoint
   try {
     const browser = await chromium.connectOverCDP(info.wsEndpoint, {
-      timeout: 5000,
+      timeout: 3000,
     });
+    return browser;
+  } catch {
+    // Stored endpoint failed, try to fetch fresh URL from CDP
+  }
+
+  // Try to get fresh WebSocket URL from CDP endpoint
+  try {
+    const wsEndpoint = await getCDPWebSocketUrl(9222);
+    const browser = await chromium.connectOverCDP(wsEndpoint, {
+      timeout: 3000,
+    });
+    // Update stored info with new endpoint
+    saveBrowserInfo({ wsEndpoint, pid: 9222 });
     return browser;
   } catch {
     return null;
   }
+}
+
+/**
+ * Get the WebSocket debugger URL from CDP endpoint
+ */
+async function getCDPWebSocketUrl(port: number): Promise<string> {
+  const response = await fetch(`http://127.0.0.1:${port}/json/version`);
+  const data = await response.json() as { webSocketDebuggerUrl: string };
+  return data.webSocketDebuggerUrl;
 }
 
 /**
@@ -321,7 +344,8 @@ async function launchBrowserWithCDP(headless: boolean): Promise<{ browser: Brows
     ],
   });
 
-  const wsEndpoint = `ws://127.0.0.1:${port}`;
+  // Get the actual WebSocket URL from CDP
+  const wsEndpoint = await getCDPWebSocketUrl(port);
 
   // Save browser info for reconnection
   saveBrowserInfo({ wsEndpoint, pid: port });
@@ -338,6 +362,7 @@ export async function connect(): Promise<DevBrowserClient> {
   const headless = process.env.HEADLESS === "true";
   let browser: Browser;
   let context: BrowserContext;
+  let connectedViaCDP = false;
 
   // Named pages tracking (name -> page URL for matching)
   const namedPages = new Map<string, NamedPageInfo>();
@@ -349,6 +374,7 @@ export async function connect(): Promise<DevBrowserClient> {
     if (existingBrowser) {
       console.log("[dev-browser] Connected to existing browser");
       browser = existingBrowser;
+      connectedViaCDP = true;
       context = browser.contexts()[0] || await browser.newContext();
     } else {
       // Browser no longer running, launch new one
@@ -443,10 +469,15 @@ export async function connect(): Promise<DevBrowserClient> {
     },
 
     async disconnect(): Promise<void> {
-      // Just disconnect from browser - don't close it
-      // Browser keeps running in the background for next script
-      // The browser info is already saved to tmp/.browser-info.json
-      // so future scripts can reconnect to it
+      // Release connection so Node.js can exit
+      // Browser keeps running in background for next script
+      if (connectedViaCDP) {
+        // CDP connection: browser.close() just disconnects, doesn't close browser
+        await browser.close();
+      } else {
+        // Direct launch: force exit to keep browser running
+        process.exit(0);
+      }
     },
 
     async getAISnapshot(name: string): Promise<string> {
