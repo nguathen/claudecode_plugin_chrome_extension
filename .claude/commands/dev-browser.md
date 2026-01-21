@@ -111,53 +111,47 @@ await page.waitForURL("**/success");
 
 ### Take Screenshots
 
-**Fastest - PNG omitBackground (61ms, 89KB):**
+**Simple one-liner:**
 ```typescript
-import { screenshotFast } from "@/client.js";
-await screenshotFast(page, "tmp/screenshot.png");
+import { screenshot } from "@/client.js";
+await screenshot(page, "tmp/screenshot.jpeg"); // 105ms, 39KB
 ```
 
-**Optimal - JPEG Q60 (105ms, 39KB) - RECOMMENDED:**
+**Recommended usage pattern:**
 ```typescript
-import { screenshotOptimal } from "@/client.js";
-await screenshotOptimal(page, "tmp/screenshot.jpeg");
+import { connect, screenshot } from "@/client.js";
+
+const client = await connect();
+const page = await client.page("example");
+
+// Use "load" for fast navigation
+await page.goto("https://example.com", { waitUntil: "load" }); // 276ms
+
+// Take screenshot
+await screenshot(page, "tmp/screenshot.jpeg"); // 105ms
+
+await client.disconnect();
+
+// Total: 381ms, 39KB ⚡
 ```
 
-**High Quality - JPEG Q95 (123ms, 113KB):**
+**Page loading strategies:**
 ```typescript
-import { screenshotHQ } from "@/client.js";
-await screenshotHQ(page, "tmp/screenshot.jpeg");
-```
-
-**Manual options:**
-```typescript
-// Fastest: PNG with omitBackground
-await page.screenshot({ path: "tmp/shot.png", omitBackground: true }); // 61ms
-
-// Best size: JPEG Q60
-await page.screenshot({ path: "tmp/shot.jpeg", type: "jpeg", quality: 60 }); // 105ms, 39KB
-
-// High quality: JPEG Q95
-await page.screenshot({ path: "tmp/shot.jpeg", type: "jpeg", quality: 95 }); // 123ms, 113KB
-```
-
-**Page loading optimization (Critical!):**
-```typescript
-// ❌ SLOW: 976ms - loads all DOM
-await page.goto(url, { waitUntil: "domcontentloaded" });
-
-// ✅ FAST: 276ms (70% faster!) - loads initial page
+// ✅ RECOMMENDED: Fast (276ms)
 await page.goto(url, { waitUntil: "load" });
 
-// ⚠️  VERY SLOW: 1525ms - waits for all resources
+// SAFE: Slower (976ms) - use if "load" misses content
+await page.goto(url, { waitUntil: "domcontentloaded" });
+
+// ❌ AVOID: Very slow (1525ms)
 await page.goto(url, { waitUntil: "networkidle" });
 ```
 
-**Performance Tips (GitHub.com):**
-- Use `waitUntil: "load"` → **70% faster page loading**
-- Use `screenshotOptimal()` → **105ms, 39KB** (recommended)
-- Avoid `fullPage: true` for long pages
-- Avoid `networkidle` - use `load` instead
+**Performance Summary:**
+- Screenshot format: JPEG Q60 (optimal)
+- Screenshot time: 105ms
+- File size: 39KB
+- Recommended navigation: `waitUntil: "load"` (276ms vs 976ms)
 
 ### Extract Data
 ```typescript

@@ -217,37 +217,15 @@ async function getPageLoadState(page: Page): Promise<PageLoadState> {
 }
 
 /**
- * Fastest screenshot - PNG with omitBackground (61ms, 89KB)
- * Best for speed-critical applications
+ * Optimized screenshot - JPEG Q60 (105ms, 39KB)
+ * Best balance of speed and file size
+ * Recommended for all use cases
  */
-export async function screenshotFast(page: Page, path: string): Promise<void> {
-  await page.screenshot({
-    path,
-    omitBackground: true,
-  });
-}
-
-/**
- * Balanced screenshot - JPEG Q60 (105ms, 39KB)
- * Best balance of speed and file size - recommended for most cases
- */
-export async function screenshotOptimal(page: Page, path: string): Promise<void> {
+export async function screenshot(page: Page, path: string): Promise<void> {
   await page.screenshot({
     path,
     type: "jpeg",
     quality: 60,
-  });
-}
-
-/**
- * High quality screenshot - JPEG Q95 (123ms, 113KB)
- * For when visual quality matters more than file size
- */
-export async function screenshotHQ(page: Page, path: string): Promise<void> {
-  await page.screenshot({
-    path,
-    type: "jpeg",
-    quality: 95,
   });
 }
 
@@ -402,6 +380,9 @@ export async function connect(): Promise<DevBrowserClient> {
     return null;
   }
 
+  // Track which pages have listeners to avoid duplicates
+  const pagesWithListeners = new WeakSet<Page>();
+
   // Get or create a page by name
   async function getPage(name: string, options?: PageOptions): Promise<Page> {
     // Check if we already have this named page
@@ -424,12 +405,15 @@ export async function connect(): Promise<DevBrowserClient> {
       }
     }
 
-    // Track page URL changes
-    page.on("framenavigated", (frame) => {
-      if (frame === page!.mainFrame()) {
-        namedPages.set(name, { name, url: page!.url() });
-      }
-    });
+    // Track page URL changes - only add listener once per page
+    if (!pagesWithListeners.has(page)) {
+      page.on("framenavigated", (frame) => {
+        if (frame === page!.mainFrame()) {
+          namedPages.set(name, { name, url: page!.url() });
+        }
+      });
+      pagesWithListeners.add(page);
+    }
 
     // Register the named page
     namedPages.set(name, { name, url: page.url() });
@@ -445,11 +429,15 @@ export async function connect(): Promise<DevBrowserClient> {
     },
 
     async close(name: string): Promise<void> {
-      const page = await findPageByName(name);
-      if (page) {
-        await page.close();
+      try {
+        const page = await findPageByName(name);
+        if (page) {
+          await page.close();
+        }
+      } finally {
+        // Always clean up tracking, even if close fails
+        namedPages.delete(name);
       }
-      namedPages.delete(name);
     },
 
     async disconnect(): Promise<void> {

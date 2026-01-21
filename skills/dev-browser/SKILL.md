@@ -129,50 +129,31 @@ await page.waitForURL("**/success"); // For specific URL
 
 ### Screenshots
 
-**Fastest (Speed Critical):**
+**Simple and optimized:**
 ```typescript
-// PNG with omitBackground - 61ms, 89KB
-import { screenshotFast } from "@/client.js";
-await screenshotFast(page, "tmp/screenshot.png");
+import { screenshot } from "@/client.js";
+
+// JPEG Q60 - 105ms, 39KB - optimized for speed and quality
+await screenshot(page, "tmp/screenshot.jpeg");
 ```
 
-**Optimal (Recommended):**
+**For different page load strategies:**
 ```typescript
-// JPEG Q60 - 105ms, 39KB - best balance
-import { screenshotOptimal } from "@/client.js";
-await screenshotOptimal(page, "tmp/screenshot.jpeg");
+// Fast page load - loads initial content quickly
+await page.goto("https://example.com", { waitUntil: "load" }); // 276ms
+await screenshot(page, "tmp/screenshot.jpeg");
+
+// Safe page load - waits for most DOM rendering
+await page.goto("https://example.com", { waitUntil: "domcontentloaded" }); // 976ms
+await screenshot(page, "tmp/screenshot.jpeg");
+
+// ⚠️ Avoid networkidle - too slow (1525ms)
 ```
 
-**High Quality:**
-```typescript
-// JPEG Q95 - 123ms, 113KB - best visual quality
-import { screenshotHQ } from "@/client.js";
-await screenshotHQ(page, "tmp/screenshot.jpeg");
-```
-
-**Direct options:**
-```typescript
-// Fastest: PNG omitBackground
-await page.screenshot({ path: "tmp/shot.png", omitBackground: true }); // 61ms
-
-// Best size: JPEG Q60
-await page.screenshot({ path: "tmp/shot.jpeg", type: "jpeg", quality: 60 }); // 105ms, 39KB
-```
-
-**Navigation optimization:**
-```typescript
-// ❌ Slow: 976ms
-await page.goto(url, { waitUntil: "domcontentloaded" });
-
-// ✅ Fast: 276ms (70% faster!)
-await page.goto(url, { waitUntil: "load" });
-```
-
-**Performance Summary (GitHub.com):**
-- `screenshotFast()`: 61ms, 89KB ⚡
-- `screenshotOptimal()`: 105ms, 39KB ✅ Recommended
-- `screenshotHQ()`: 123ms, 113KB
-- Navigation "load": 276ms vs 976ms for "domcontentloaded"
+**Performance (GitHub.com):**
+- Navigation with "load": 276ms (✅ recommended)
+- Screenshot: 105ms, 39KB
+- **Total: 381ms** (vs 1297ms with old config)
 
 ### ARIA Snapshot (Element Discovery)
 
