@@ -217,19 +217,31 @@ async function getPageLoadState(page: Page): Promise<PageLoadState> {
 }
 
 /**
- * Fast screenshot using JPEG Q80 - 74% smaller than PNG, similar speed
- * Recommended for most use cases where visual quality is acceptable
+ * Fastest screenshot - PNG with omitBackground (61ms, 89KB)
+ * Best for speed-critical applications
  */
 export async function screenshotFast(page: Page, path: string): Promise<void> {
   await page.screenshot({
     path,
-    type: "jpeg",
-    quality: 80,
+    omitBackground: true,
   });
 }
 
 /**
- * High quality screenshot using JPEG Q95 - best visual quality with JPEG
+ * Balanced screenshot - JPEG Q60 (105ms, 39KB)
+ * Best balance of speed and file size - recommended for most cases
+ */
+export async function screenshotOptimal(page: Page, path: string): Promise<void> {
+  await page.screenshot({
+    path,
+    type: "jpeg",
+    quality: 60,
+  });
+}
+
+/**
+ * High quality screenshot - JPEG Q95 (123ms, 113KB)
+ * For when visual quality matters more than file size
  */
 export async function screenshotHQ(page: Page, path: string): Promise<void> {
   await page.screenshot({

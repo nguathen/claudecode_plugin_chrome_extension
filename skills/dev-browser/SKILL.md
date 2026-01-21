@@ -129,25 +129,50 @@ await page.waitForURL("**/success"); // For specific URL
 
 ### Screenshots
 
-**Fast (recommended for most use cases):**
+**Fastest (Speed Critical):**
 ```typescript
-// JPEG Q80 - 74% smaller, comparable visual quality
-await page.screenshot({ path: "tmp/screenshot.jpeg", type: "jpeg", quality: 80 });
+// PNG with omitBackground - 61ms, 89KB
+import { screenshotFast } from "@/client.js";
+await screenshotFast(page, "tmp/screenshot.png");
 ```
 
-**Standard:**
+**Optimal (Recommended):**
 ```typescript
-// PNG - lossless but 4x larger
-await page.screenshot({ path: "tmp/screenshot.png" });
-
-// High quality JPEG
-await page.screenshot({ path: "tmp/screenshot.jpeg", type: "jpeg", quality: 95 });
+// JPEG Q60 - 105ms, 39KB - best balance
+import { screenshotOptimal } from "@/client.js";
+await screenshotOptimal(page, "tmp/screenshot.jpeg");
 ```
 
-**Performance tips:**
-- Avoid `fullPage: true` for long pages - screenshot only viewport: `await page.screenshot({ path: "tmp/shot.jpeg" })`
-- Use `waitUntil: "domcontentloaded"` instead of `"networkidle"` to load 60% faster
-- JPEG Q80 vs PNG: 115ms vs 110ms (similar speed), but 74% smaller file size
+**High Quality:**
+```typescript
+// JPEG Q95 - 123ms, 113KB - best visual quality
+import { screenshotHQ } from "@/client.js";
+await screenshotHQ(page, "tmp/screenshot.jpeg");
+```
+
+**Direct options:**
+```typescript
+// Fastest: PNG omitBackground
+await page.screenshot({ path: "tmp/shot.png", omitBackground: true }); // 61ms
+
+// Best size: JPEG Q60
+await page.screenshot({ path: "tmp/shot.jpeg", type: "jpeg", quality: 60 }); // 105ms, 39KB
+```
+
+**Navigation optimization:**
+```typescript
+// ❌ Slow: 976ms
+await page.goto(url, { waitUntil: "domcontentloaded" });
+
+// ✅ Fast: 276ms (70% faster!)
+await page.goto(url, { waitUntil: "load" });
+```
+
+**Performance Summary (GitHub.com):**
+- `screenshotFast()`: 61ms, 89KB ⚡
+- `screenshotOptimal()`: 105ms, 39KB ✅ Recommended
+- `screenshotHQ()`: 123ms, 113KB
+- Navigation "load": 276ms vs 976ms for "domcontentloaded"
 
 ### ARIA Snapshot (Element Discovery)
 
