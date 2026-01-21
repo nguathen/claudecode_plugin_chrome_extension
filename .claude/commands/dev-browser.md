@@ -52,7 +52,7 @@ Use this skill when users ask to:
 All scripts must run from `skills/dev-browser/`:
 
 ```bash
-cd skills/dev-browser && npx tsx <<'EOF'
+cd skills/dev-browser && node --import tsx/esm <<'EOF'
 import { connect } from "@/client.js";
 
 const client = await connect();

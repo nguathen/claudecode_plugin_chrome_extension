@@ -32,7 +32,7 @@ Set `HEADLESS=true` environment variable to run browser in headless mode.
 Execute scripts inline using heredocs:
 
 ```bash
-cd skills/dev-browser && npx tsx <<'EOF'
+cd skills/dev-browser && node --import tsx/esm <<'EOF'
 import { connect, waitForPageLoad } from "@/client.js";
 
 const client = await connect();
@@ -44,6 +44,13 @@ await waitForPageLoad(page);
 
 console.log({ title: await page.title(), url: page.url() });
 await client.disconnect();
+EOF
+```
+
+Or using npm script:
+```bash
+cd skills/dev-browser && npm run dev <<'EOF'
+# ... your TypeScript code here ...
 EOF
 ```
 

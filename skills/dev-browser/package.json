@@ -6,6 +6,7 @@
     "@/*": "./src/*"
   },
   "scripts": {
+    "dev": "node --import tsx/esm",
     "test": "vitest run",
     "test:watch": "vitest"
   },
