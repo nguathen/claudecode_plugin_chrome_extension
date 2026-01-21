@@ -418,8 +418,10 @@ export async function connect(): Promise<DevBrowserClient> {
     },
 
     async disconnect(): Promise<void> {
-      // Just disconnect - browser keeps running for next script
-      await browser.close();
+      // Just disconnect from browser - don't close it
+      // Browser keeps running in the background for next script
+      // The browser info is already saved to tmp/.browser-info.json
+      // so future scripts can reconnect to it
     },
 
     async getAISnapshot(name: string): Promise<string> {
