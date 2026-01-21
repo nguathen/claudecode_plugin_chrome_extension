@@ -6,6 +6,8 @@ import { getSnapshotScript } from "./snapshot/browser-script";
 
 // File to store browser connection info
 const BROWSER_INFO_FILE = path.join(process.cwd(), "tmp", ".browser-info.json");
+// File to store named pages info for persistence across scripts
+const PAGES_INFO_FILE = path.join(process.cwd(), "tmp", ".pages-info.json");
 
 interface BrowserInfo {
   wsEndpoint: string;
@@ -289,6 +291,31 @@ function loadBrowserInfo(): BrowserInfo | null {
 }
 
 /**
+ * Save pages info to file for persistence across scripts
+ */
+function savePagesInfo(pages: Map<string, NamedPageInfo>): void {
+  ensureTmpDir();
+  const data = Object.fromEntries(pages);
+  fs.writeFileSync(PAGES_INFO_FILE, JSON.stringify(data, null, 2));
+}
+
+/**
+ * Load pages info from file
+ */
+function loadPagesInfo(): Map<string, NamedPageInfo> {
+  try {
+    if (fs.existsSync(PAGES_INFO_FILE)) {
+      const data = fs.readFileSync(PAGES_INFO_FILE, "utf-8");
+      const obj = JSON.parse(data) as Record<string, NamedPageInfo>;
+      return new Map(Object.entries(obj));
+    }
+  } catch {
+    // File doesn't exist or is invalid
+  }
+  return new Map();
+}
+
+/**
  * Try to connect to an existing browser
  */
 async function tryConnectExisting(info: BrowserInfo): Promise<Browser | null> {
@@ -365,7 +392,8 @@ export async function connect(): Promise<DevBrowserClient> {
   let connectedViaCDP = false;
 
   // Named pages tracking (name -> page URL for matching)
-  const namedPages = new Map<string, NamedPageInfo>();
+  // Load from file for persistence across scripts
+  let namedPages = new Map<string, NamedPageInfo>();
 
   // Try to connect to existing browser
   const existingInfo = loadBrowserInfo();
@@ -375,6 +403,8 @@ export async function connect(): Promise<DevBrowserClient> {
       console.log("[dev-browser] Connected to existing browser");
       browser = existingBrowser;
       connectedViaCDP = true;
+      // Load persisted page names
+      namedPages = loadPagesInfo();
       context = browser.contexts()[0] || await browser.newContext();
     } else {
       // Browser no longer running, launch new one
@@ -438,13 +468,15 @@ export async function connect(): Promise<DevBrowserClient> {
       page.on("framenavigated", (frame) => {
         if (frame === page!.mainFrame()) {
           namedPages.set(name, { name, url: page!.url() });
+          savePagesInfo(namedPages);
         }
       });
       pagesWithListeners.add(page);
     }
 
-    // Register the named page
+    // Register the named page and persist
     namedPages.set(name, { name, url: page.url() });
+    savePagesInfo(namedPages);
 
     return page;
   }
@@ -465,6 +497,7 @@ export async function connect(): Promise<DevBrowserClient> {
       } finally {
         // Always clean up tracking, even if close fails
         namedPages.delete(name);
+        savePagesInfo(namedPages);
       }
     },
 
